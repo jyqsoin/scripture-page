@@ -577,14 +577,15 @@ class ShadowSelectPage(QWidget):
 
         # 表格
         self.table = QTableWidget()
-        # 8 列：选股信息 + 一致性 + 风控状态/原因
-        self.headers = ["代码", "名称", "仓位", "信号",
+        # 9 列：选股信息 + 均线破位标记 + 一致性 + 风控状态/原因
+        self.headers = ["代码", "名称", "仓位", "信号", "均线破位",
                         "捕获率", "FP16误差", "风控状态", "风控原因"]
         self.header_tooltips = [
             "股票代码（6 位数字，本地 stock_info 表补全名称）",
             "股票名称（本地缓存，不发起网络请求）",
             "风控后的有效目标仓位（BLACKLIST 拦截置 0，WATCH 预警减半）",
             "由最新日仓位与前一日仓位差分推导：新开仓 / 加仓 / 减仓 / 清仓 / 持有",
+            "MA5/10/20/60 中最低一根即 MIN_MA；开盘价与收盘价同时低于 MIN_MA 判为破位↓",
             "回测窗口内上涨日的收益捕获率（取自 shadow_summary.csv）",
             "FP16 与参考实现的仓位误差（阈值 1e-3），悬停可看 NAV 相对误差",
             "事件风控层分级：正常 / 预警(WATCH, 仓位×0.5) / 拦截(BLACKLIST, 仓位=0)",
@@ -630,13 +631,13 @@ class ShadowSelectPage(QWidget):
                 item.setToolTip(tip)
 
     def _setup_column_resize_modes(self):
-        """列宽策略：前 6 列按内容自适应，风控状态/原因两列 Stretch。"""
+        """列宽策略：前 7 列按内容自适应，风控状态/原因两列 Stretch。"""
         header = self.table.horizontalHeader()
-        # 前 6 列：代码、名称、仓位、信号、捕获率、FP16误差 — 紧凑
-        for col in range(6):
+        # 前 7 列：代码、名称、仓位、信号、均线破位、捕获率、FP16误差 — 紧凑
+        for col in range(7):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
-        # 风控状态（col 6）+ 风控原因（col 7）：Stretch 分摊剩余空间
-        for col in range(6, len(self.headers)):
+        # 风控状态（col 7）+ 风控原因（col 8）：Stretch 分摊剩余空间
+        for col in range(7, len(self.headers)):
             header.setSectionResizeMode(col, QHeaderView.Stretch)
         header.setStretchLastSection(True)
 
@@ -682,6 +683,64 @@ class ShadowSelectPage(QWidget):
                     _db.query_all("SELECT code, name FROM stock_info")}
         except Exception:
             return {}
+
+    @staticmethod
+    def _ma_break_info(code, as_of):
+        """计算单只标的在 as_of 日的均线破位情况。
+
+        口径与「均线破位选股」公式一致：MA5/10/20/60 中数值最小的即 MIN_MA，
+        当日开盘价与收盘价同时低于 MIN_MA 视为破位。数据不足时返回 None。
+        """
+        try:
+            from core.data_loader import load_local_daily
+
+            frame = load_local_daily(code)
+            if frame is None or frame.empty:
+                return None
+            frame = frame[frame["date"] <= str(as_of)]
+            periods = sorted(ma_break.DEFAULT_PERIODS.values())
+            if len(frame) < max(periods):
+                return None
+            closes = frame["close"].astype(float)
+            means = {period: float(closes.tail(period).mean()) for period in periods}
+            min_period = min(means, key=means.get)
+            min_ma = means[min_period]
+            last = frame.iloc[-1]
+            close = float(last["close"])
+            open_price = float(last["open"])
+            broken = open_price < min_ma and close < min_ma
+            deviation = (close / min_ma - 1) * 100 if min_ma else 0.0
+            if broken:
+                tip = ("跌破%d日均线 %.2f（收盘 %.2f / 开盘 %.2f，偏离 %.2f%%）"
+                       % (min_period, min_ma, close, open_price, deviation))
+            else:
+                tip = ("未破位：最低为 MA%d=%.2f（收盘 %.2f / 开盘 %.2f，偏离 %+.2f%%）"
+                       % (min_period, min_ma, close, open_price, deviation))
+            return {"broken": broken, "period": min_period, "min_ma": min_ma,
+                    "close": close, "open": open_price,
+                    "deviation": deviation, "tip": tip}
+        except Exception:
+            return None
+
+    def _ma_break_map(self, codes, as_of):
+        """批量计算均线破位标记，同一代码只读一次本地日线。"""
+        result = {}
+        for code in set(codes):
+            result[code] = self._ma_break_info(code, as_of)
+        return result
+
+    def _build_funnel_text(self, rows):
+        """空态漏斗：初选 → 事件风控剔除 → 均线破位 → 最终信号。"""
+        first = [r for r in rows if r.get("raw_position", 0.0) >= 0.01]
+        blocked = [r for r in first if r.get("risk") == "BLACKLIST"]
+        survived = [r for r in first if r.get("risk") != "BLACKLIST"]
+        broken = [r for r in survived if (r.get("ma_break") or {}).get("broken")]
+        return (
+            "今日 NPU 未选出标的（所有标的目标仓位 < 1%%）\n"
+            "漏斗：初选池 %d 只 → 事件风控剔除 %d 只 → 剩余 %d 只（其中均线破位 %d 只）"
+            " → 最终信号 0 只"
+            % (len(first), len(blocked), len(survived), len(broken))
+        )
 
     def refresh(self):
         try:
@@ -813,11 +872,17 @@ class ShadowSelectPage(QWidget):
                     "_hidden": hidden,
                 })
 
+            # 均线破位标记：仅对候选标的读取本地日线计算，缺数据时置 None 不报错
+            ma_map = self._ma_break_map([r["code"] for r in rows], latest_date)
+            for r in rows:
+                r["ma_break"] = ma_map.get(r["code"])
+
             # 只展示 position >= 0.01 的标的；但 rows 保留全量用于告警
             display_rows = [r for r in rows if not r.get("_hidden", False)]
             self._latest_rows = display_rows
             if not display_rows:
-                self._show_empty("今日 NPU 未选出任何标的（所有标的目标仓位 < 1%）")
+                # 空态不再只给一句话，改为横向漏斗，让空跑也有诊断价值
+                self._show_empty(self._build_funnel_text(rows))
             else:
                 self._fill_table(display_rows)
                 self.table.show()
@@ -835,6 +900,8 @@ class ShadowSelectPage(QWidget):
         self.table.setHorizontalHeaderLabels(self.headers)
         self.table.setRowCount(1)
         self.table.clearContents()
+        # 空态可能携带漏斗诊断文本，启用换行避免被截断
+        self.table.setWordWrap(True)
         item = QTableWidgetItem(text)
         item.setTextAlignment(Qt.AlignCenter)
         item.setFlags(Qt.NoItemFlags)
@@ -895,6 +962,25 @@ class ShadowSelectPage(QWidget):
                 sig_item.setForeground(QBrush(QColor("#888")))
             self.table.setItem(r, 3, sig_item)
 
+            # 均线破位标记（第 4 列）：破位橙底白字，正常灰字
+            ma = row.get("ma_break") or {}
+            ma_item = QTableWidgetItem()
+            if ma.get("broken"):
+                ma_item.setText("破位↓")
+                ma_item.setBackground(QBrush(QColor("#e0781f")))
+                ma_item.setForeground(QBrush(QColor("#ffffff")))
+                ma_item.setToolTip(ma.get("tip", ""))
+            elif ma:
+                ma_item.setText("正常")
+                ma_item.setForeground(QBrush(QColor("#888")))
+                ma_item.setToolTip(ma.get("tip", ""))
+            else:
+                ma_item.setText("—")
+                ma_item.setForeground(QBrush(QColor("#999")))
+                ma_item.setToolTip("本地日线不足 %d 根，无法计算均线"
+                                   % max(ma_break.DEFAULT_PERIODS.values()))
+            self.table.setItem(r, 4, ma_item)
+
             # 捕获率（上涨日收益捕获率）
             capture = row.get("capture")
             cap_item = QTableWidgetItem("—" if capture is None else "%.2f%%" % (capture * 100))
@@ -903,7 +989,7 @@ class ShadowSelectPage(QWidget):
                 cap_item.setForeground(QBrush(QColor("#b8860b")))
             if risk == "BLACKLIST":
                 cap_item.setForeground(QBrush(QColor("#888")))
-            self.table.setItem(r, 4, cap_item)
+            self.table.setItem(r, 5, cap_item)
 
             # FP16 一致性误差（仓位误差，tooltip 附 NAV 相对误差）
             err_item = QTableWidgetItem("%.2e" % row.get("pos_err", 0.0))
@@ -913,9 +999,9 @@ class ShadowSelectPage(QWidget):
                 err_item.setForeground(QBrush(QColor("#b00020")))
             if risk == "BLACKLIST":
                 err_item.setForeground(QBrush(QColor("#888")))
-            self.table.setItem(r, 5, err_item)
+            self.table.setItem(r, 6, err_item)
 
-            # 风控状态（第 6 列）
+            # 风控状态（第 7 列）
             risk_item = QTableWidgetItem()
             if risk == "BLACKLIST":
                 risk_item.setText("已拦截")
@@ -928,9 +1014,9 @@ class ShadowSelectPage(QWidget):
             else:
                 risk_item.setText("✓ 正常")
                 risk_item.setForeground(QBrush(QColor("#0a6b3d")))
-            self.table.setItem(r, 6, risk_item)
+            self.table.setItem(r, 7, risk_item)
 
-            # 风控原因（第 7 列）—— 短显示，完整看 tooltip
+            # 风控原因（第 8 列）—— 短显示，完整看 tooltip
             reason_item = QTableWidgetItem()
             if reason:
                 display = reason[:30] + ("…" if len(reason) > 30 else "")
@@ -943,7 +1029,7 @@ class ShadowSelectPage(QWidget):
             else:
                 reason_item.setText("—")
                 reason_item.setForeground(QBrush(QColor("#999")))
-            self.table.setItem(r, 7, reason_item)
+            self.table.setItem(r, 8, reason_item)
 
         # 恢复表头 tooltip
         self._setup_header_tooltips()
@@ -1080,6 +1166,9 @@ class ShadowSelectPage(QWidget):
             "仓位": r["position"],
             "原始仓位": r.get("raw_position", r["position"]),
             "信号": r.get("signal", ""),
+            "均线破位": ("破位" if (r.get("ma_break") or {}).get("broken")
+                        else ("正常" if r.get("ma_break") else "")),
+            "MIN_MA": (r.get("ma_break") or {}).get("min_ma", ""),
             "捕获率": ("" if r.get("capture") is None
                        else round(r["capture"], 6)),
             "FP16仓位误差": r.get("pos_err", 0.0),
