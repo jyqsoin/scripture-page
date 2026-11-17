@@ -1,33 +1,26 @@
-# Python 缓存
+# Python 缓存与虚拟环境
 __pycache__/
 *.py[cod]
-*.pyo
 .pytest_cache/
-
-# 虚拟环境
 .venv/
 venv/
 env/
 
-# 运行时生成的风控记录（每次推理追加，不入库）
-live/risk_blacklist.csv
-
 # 本地数据（SQLite / parquet / 分钟线等）
 data/
 
-# 训练与推理产物（权重、缓存、报告）
+# 训练与推理产物（权重、缓存、报告、日志）
 rl_output*/
-cache_v2/
-cache_shadow/
+cache_*/
 npu_output/
-shadow_output/
-shadow_output_fp32/
+shadow_output*/
 stock_dl_output/
 sim/
 logs/
-
-# 日志与生成图表
 *.log
+
+# 运行时生成文件
+live/risk_blacklist.csv
 shadow_error_chart.png
 _seed_results.json
 _stat_results.json
