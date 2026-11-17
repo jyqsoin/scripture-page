@@ -1,0 +1,23 @@
+{
+  "name": "均线破位选股",
+  "kind": "select",
+  "content": "MA1:=MA(C,N1);\nMA2:=MA(C,N2);\nMA3:=MA(C,N3);\nMA4:=MA(C,N4);\nMINMA:=MIN(MIN(MA1,MA2),MIN(MA3,MA4));\nXG:C<MINMA AND O<MINMA AND (C<O OR YIN=0);",
+  "params": {
+    "N1": {
+      "default": 5
+    },
+    "N2": {
+      "default": 10
+    },
+    "N3": {
+      "default": 20
+    },
+    "N4": {
+      "default": 60
+    },
+    "YIN": {
+      "default": 0
+    }
+  },
+  "disclaimer": "仅研究用途，不构成投资建议"
+}

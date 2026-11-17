@@ -1,0 +1,63 @@
+seed: 42
+
+data:
+  # akshare：真实行情，东财/腾讯/新浪自动切换；simulate：仅用于离线功能测试
+  source: akshare
+  codes:
+    - "600519"
+    - "000001"
+    - "300750"
+  train_code: "600519"
+  start: "20150101"
+  end: null  # null 表示运行当天
+  adjust: hfq
+  providers: [eastmoney, tencent, sina]  # 按顺序自动切换
+  test_ratio: 0.20  # 每只股票最后 20% 始终只做测试
+  validation_ratio: 0.20  # 测试前再划 20% 做验证，只用于选模，不参与训练
+  rolling_window: 1500  # 每 50 个 episode 重新初始化最近训练窗口
+  simulate_days: 3000
+
+env:
+  initial_cash: 1000000
+  fee_rate: 0.0003  # 单边佣金，买卖均收
+  slip: 0.001  # 单边滑点
+  stamp_duty: 0.0005  # 仅卖出收取
+  max_position: 1.0
+  allow_short: false
+  lookback: 60
+  trade_threshold: 0.05  # 小于 5% 的仓位变化不交易，抑制无效调仓
+  liquidate_on_done: true
+  reward_window: 60
+  min_reward_history: 20  # 风险比率至少积累 20 步才生效
+  sharpe_weight: 0.02
+  calmar_weight: 0.02
+  profit_loss_weight: 0.02
+  closed_trade_weight: 2.0  # 平仓时直接反馈该笔净盈亏，改善信用分配
+  drawdown_weight: 5.0  # 二次回撤惩罚，重点抑制大回撤
+  turnover_weight: 0.2
+  trade_penalty: 0.02
+  consecutive_loss_penalty: 0.5  # 连亏第 3 笔起，惩罚随连亏数增加
+  hold_reward: 0.0
+
+ppo:
+  hidden_dim: 256
+  lr: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_eps: 0.2
+  epochs_per_update: 10
+  batch_size: 64
+  rollout_steps: 512
+  total_episodes: 500
+  reinit_every: 50
+  random_start: true
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  validation_every: 10  # 每 10 轮在验证集确定性选模，不使用测试集
+  print_every: 1
+
+runtime:
+  device: auto  # auto / cpu / cuda
+  cpu_threads: 4
+  output_dir: rl_output_optimized

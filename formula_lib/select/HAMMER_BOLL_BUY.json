@@ -1,0 +1,7 @@
+{
+  "name": "HAMMER_BOLL_BUY",
+  "kind": "select",
+  "content": "N1:=5; N2:=20; N3:=60;\nMA5:=MA(C,N1);\nMA20:=MA(C,N2);\nMA60:=MA(C,N3);\n\nMID:=MA(C,N2);\n\nBody:=ABS(C-O);\nRange:=H-L;\nOpenClose:=IF(O<C,O,C);\nLowShadow:=OpenClose-L;\n\nHammer:=LowShadow>=Body*2 AND C>O AND LowShadow>=Range*0.4;\n\nBreakMID:=L<=MID;\n\nTrendOK:=(MA20>REF(MA20,1)) OR (MA60>REF(MA60,1));\nNoDoubleDead:=(MA20>REF(MA20,1) OR MA60>REF(MA60,1));\n\nXG:Hammer AND BreakMID AND TrendOK AND NoDoubleDead;",
+  "params": {},
+  "disclaimer": "仅研究用途，不构成投资建议"
+}
