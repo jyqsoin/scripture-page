@@ -967,7 +967,7 @@ class ShadowSelectPage(QWidget):
             ma_item = QTableWidgetItem()
             if ma.get("broken"):
                 ma_item.setText("破位↓")
-                ma_item.setBackground(QBrush(QColor("#e0781f")))
+                ma_item.setBackground(QBrush(QColor("#b8530a")))
                 ma_item.setForeground(QBrush(QColor("#ffffff")))
                 ma_item.setToolTip(ma.get("tip", ""))
             elif ma:
