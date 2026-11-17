@@ -1,0 +1,128 @@
+seed: 42
+device: cpu
+torch_threads: 20
+
+data:
+  codes: ["600519", "000001", "300750"]
+  start_date: '20150101'
+  end_date: '20261231'
+  adjust: hfq
+  providers: [tencent, eastmoney]
+  parallel_workers: 3
+  cache_dir: cache_v2
+  test_ratio: 0.20          # 最后20%严格冻结，仅最终测试
+  validation_ratio: 0.20    # 测试前20%仅用于选模和早停
+  rolling_window: 1500
+  normalization_window: 120 # 所有因子只用截至当日的滚动统计
+  normalization_min_periods: 60
+
+network:
+  lookback: 60
+  feature_count: 20
+  account_count: 8          # 60×20+8=1208
+  use_attention: false      # 保留Attention代码，默认不创建也不执行
+  d_model: 64
+  heads: 4
+  layers: 2
+  fc_hidden: 256
+  dropout: 0.10
+  log_std_init: -0.70
+
+env:
+  initial_cash: 1000000
+  commission: 0.0006        # 双边万6
+  slippage: 0.001           # 双边各0.1%
+  stamp_duty: 0.0005        # 卖出0.05%
+  max_position: 1.0
+  allow_short: false
+  trade_threshold: 0.05     # 与稳定基线一致，小于5%的调仓不执行
+  min_profit_target: 0.05
+  # 交易闭环与风控（只改执行层，奖励权重保持不变）
+  stop_loss: 0.10           # 硬止损：单笔浮亏10%强制平仓
+  max_hold_days: 20         # 超时且浮盈低于5%时100%平仓
+  timeout_close_fraction: 1.0
+  residual_close_fraction: 0.05  # 尾仓<5%直接归零，保证形成完整平仓
+  rebalance_days: 3         # 非强平调仓最短间隔，抑制高换手
+  cooldown_after_exit: 2    # 平仓后禁止重新开仓的天数
+  trailing_stop: 0.08       # 浮盈达到 trailing_arm 后，从峰值回撤该比例平仓
+  trailing_arm: 0.15        # 移动止盈启动阈值（300750 覆盖为 0.12/0.06）
+  dd_breaker: 0.15          # 账户回撤熔断：触发后清仓并暂停开仓
+  dd_breaker_cooldown: 10
+  trend_entry_required: false
+  ma_exit_mode: both        # both=价格<MA20且动量<0；price_below_ma=仅跌破MA20
+  trend_participation_floor: 0.0
+  pl_gate_min_trades: 5     # 至少5笔完整平仓后才启用盈亏比门槛
+  pl_gate_ratio: 1.2        # 盈亏比<1.2时把目标仓位压到上限的50%
+  pl_gate_scale: 0.5
+  risk_overrides:
+    "600519":
+      trend_participation_floor: 0.20  # 价格>MA20且动量>0时至少20%参与
+    "000001":
+      trend_participation_floor: 0.20  # 正趋势至少20%参与；下跌趋势不强制持仓
+    "300750":
+      max_position: 0.60
+      stop_loss: 0.08
+      max_hold_days: 12
+      timeout_close_fraction: 1.0
+      rebalance_days: 3
+      cooldown_after_exit: 3
+      trailing_stop: 0.06
+      trailing_arm: 0.12
+      dd_breaker: 0.12
+      dd_breaker_cooldown: 10
+      ma_exit_mode: price_below_ma
+      trend_entry_required: true
+      trend_participation_floor: 0.25  # 趋势确认时至少25%参与，避免整段行情空仓
+  min_closed_trades: 3
+  insufficient_closed_drawdown_multiplier: 1.5
+  liquidate_on_done: true
+  reward_window: 60
+  min_reward_history: 20
+  sharpe_weight: 0.02
+  calmar_weight: 0.02
+  closed_trade_weight: 2.0
+  profit_loss_weight: 0.02
+  profit_loss_min_trades: 3
+  profit_loss_min_trades_high_vol: 2
+  drawdown_weight: 5.0
+  high_vol_drawdown_multiplier: 1.5  # 60日波动高于三股当日截面中位数
+  turnover_weight: 0.20
+  trade_penalty: 0.02
+  consecutive_loss_penalty: 0.50
+  trend_follow_weight: 0.02
+  trend_follow_multiplier: 1.20
+  downtrend_holding_penalty_multiplier: 1.5
+
+ppo:
+  total_episodes: 300
+  rollout_steps: 1024       # 所有股票合计交互步数，共享buffer
+  batch_size: 128
+  epochs: 4
+  learning_rate: 0.0001
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.20
+  value_coef: 0.50
+  entropy_coef: 0.005
+  max_grad_norm: 0.50
+  validation_every: 10      # 与 patience 对齐，10 episode 验证一次，30 即“连续30 episode”
+  early_stop_patience: 30   # 选模得分连续30 episode未提升则停止
+  early_stop_min_delta: 0.0
+
+validation:
+  nav_weight: 1.0
+  drawdown_weight: 0.5      # 选模得分=平均NAV-0.5×平均回撤
+  min_closed_trades: 3      # 训练期选模的闭环门槛，低于成功门槛8，避免误杀候选模型
+  min_avg_position: 0.03    # 平均仓位低于3%视为低仓；三只全空或平均仓位不达标时取消资格
+  closure_penalty: 0.05     # 每缺1笔完整平仓扣0.05分
+  flat_penalty: 0.02        # 单只低仓股小额扣分，避免误杀后期模型
+
+success:
+  min_average_nav: 1.02
+  max_average_drawdown: 0.20
+  risk_code: '300750'
+  max_risk_drawdown: 0.25
+  min_closed_trades: 8      # 升级门槛：测试集每股完整平仓≥8笔
+
+output:
+  output_dir: rl_output_final_baseline

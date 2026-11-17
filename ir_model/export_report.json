@@ -1,0 +1,189 @@
+{
+  "version": "v3_fc_trend020",
+  "source_weights": "rl_output_final_baseline\\model_best.pth",
+  "source_sha256": "38AD9F91E0D4DEB80490D9C55D1F34170B8B09E1C28C8943E4569D4C4A465FD7",
+  "onnx": "ir_model\\model.onnx",
+  "xml": "ir_model\\model.xml",
+  "bin": "ir_model\\model.bin",
+  "xml_fp32": "ir_model\\model_fp32.xml",
+  "bin_fp32": "ir_model\\model_fp32.bin",
+  "precision": "FP16",
+  "opset": 17,
+  "inputs": {
+    "state": {
+      "shape": [
+        "batch",
+        1208
+      ],
+      "dtype": "float32",
+      "layout": "60 天 × 20 因子（按日展开）[1200] + account[8]"
+    }
+  },
+  "outputs": {
+    "action_mean": {
+      "shape": [
+        "batch"
+      ],
+      "dtype": "float32"
+    },
+    "value": {
+      "shape": [
+        "batch"
+      ],
+      "dtype": "float32"
+    }
+  },
+  "preprocessing": {
+    "type": "rolling_zscore",
+    "window": 120,
+    "min_periods": 60,
+    "std_ddof": 1,
+    "clip": [
+      -8.0,
+      8.0
+    ],
+    "feature_columns": [
+      "momentum_1",
+      "momentum_5",
+      "momentum_10",
+      "momentum_20",
+      "momentum_60",
+      "volume_ratio_5",
+      "volume_ratio_20",
+      "volume_ratio_60",
+      "atr_14",
+      "volatility_20",
+      "amplitude",
+      "volume_std_20",
+      "ma_diff_5_20",
+      "ma_diff_20_60",
+      "price_position_52w",
+      "bollinger_position",
+      "obv",
+      "volume_corr_20",
+      "vwap_deviation",
+      "dist_high_60"
+    ],
+    "account_layout": [
+      "cash_ratio",
+      "position_fraction",
+      "nav",
+      "drawdown",
+      "last_action",
+      "hold_steps/60",
+      "unrealized_pnl",
+      "ret5"
+    ],
+    "note": "OBV 依赖全历史 cumsum，必须由部署侧用全历史计算，不能截断窗口"
+  },
+  "parity": {
+    "onnx_max_abs_error": 3.814697265625e-06,
+    "openvino_fp16_max_abs_error": 3.814697265625e-06,
+    "openvino_fp32_max_abs_error": 3.814697265625e-06
+  },
+  "dynamic_batch": {
+    "1": {
+      "shape": [
+        1
+      ],
+      "max_abs_error_vs_single": 0.0
+    },
+    "4": {
+      "shape": [
+        4
+      ],
+      "max_abs_error_vs_single": 0.0
+    },
+    "32": {
+      "shape": [
+        32
+      ],
+      "max_abs_error_vs_single": 0.0
+    }
+  },
+  "latency_ms": {
+    "batch_1": 0.044410499976947904,
+    "batch_32": 0.2194860007148236
+  },
+  "samples": [
+    {
+      "code": "600519",
+      "date": "2024-10-10",
+      "torch_action_mean": -0.38078543543815613,
+      "openvino_action_mean": -0.3807854950428009
+    },
+    {
+      "code": "600519",
+      "date": "2024-11-04",
+      "torch_action_mean": -0.27963706851005554,
+      "openvino_action_mean": -0.279636949300766
+    },
+    {
+      "code": "600519",
+      "date": "2024-11-27",
+      "torch_action_mean": -0.45272117853164673,
+      "openvino_action_mean": -0.4527212679386139
+    },
+    {
+      "code": "600519",
+      "date": "2024-12-20",
+      "torch_action_mean": -0.24251413345336914,
+      "openvino_action_mean": -0.2425140142440796
+    },
+    {
+      "code": "000001",
+      "date": "2024-10-10",
+      "torch_action_mean": 0.025443248450756073,
+      "openvino_action_mean": 0.025443531572818756
+    },
+    {
+      "code": "000001",
+      "date": "2024-11-04",
+      "torch_action_mean": -0.17793628573417664,
+      "openvino_action_mean": -0.17793595790863037
+    },
+    {
+      "code": "000001",
+      "date": "2024-11-27",
+      "torch_action_mean": -0.2968990206718445,
+      "openvino_action_mean": -0.2968991994857788
+    },
+    {
+      "code": "000001",
+      "date": "2024-12-20",
+      "torch_action_mean": 0.0731225237250328,
+      "openvino_action_mean": 0.0731227919459343
+    },
+    {
+      "code": "300750",
+      "date": "2025-06-19",
+      "torch_action_mean": 0.2845374047756195,
+      "openvino_action_mean": 0.28453734517097473
+    },
+    {
+      "code": "300750",
+      "date": "2025-07-14",
+      "torch_action_mean": 0.46569475531578064,
+      "openvino_action_mean": 0.46569469571113586
+    },
+    {
+      "code": "300750",
+      "date": "2025-08-06",
+      "torch_action_mean": 0.40284550189971924,
+      "openvino_action_mean": 0.4028452932834625
+    },
+    {
+      "code": "300750",
+      "date": "2025-08-29",
+      "torch_action_mean": 0.3465726673603058,
+      "openvino_action_mean": 0.3465724289417267
+    }
+  ],
+  "files": {
+    "onnx_bytes": 1507378,
+    "xml_bytes": 18211,
+    "bin_bytes": 752662,
+    "xml_fp32_bytes": 13603,
+    "bin_fp32_bytes": 1505304
+  }
+}
