@@ -1,0 +1,13 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 运行时生成的风控记录（每次推理追加，不入库）
+live/risk_blacklist.csv
