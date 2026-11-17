@@ -489,8 +489,9 @@ class EventRiskFilter:
         run_dir.mkdir(parents=True, exist_ok=True)
 
         # ── risk_blacklist.csv ──────────────────────────────────────
-        fields = ["trade_date", "code", "name", "risk", "risk_reason",
-                  "source", "position_raw", "position_filtered"]
+        # 字段固定为 5 个：trade_date / code / risk_level / reason / expires_at
+        fields = ["trade_date", "code", "risk_level", "reason", "expires_at"]
+        expires_at = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")
         with open(run_dir / "risk_blacklist.csv", "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
             writer.writeheader()
@@ -498,17 +499,14 @@ class EventRiskFilter:
                 writer.writerow({
                     "trade_date": trade_date,
                     "code": row.get("code", ""),
-                    "name": row.get("name", ""),
-                    "risk": row.get("risk", NORMAL),
-                    "risk_reason": row.get("risk_reason", ""),
-                    "source": "event_risk_filter_v1",
-                    "position_raw": row.get("position_raw", row.get("position", "")),
-                    "position_filtered": row.get("filtered_position", ""),
+                    "risk_level": row.get("risk", NORMAL),
+                    "reason": row.get("risk_reason", ""),
+                    "expires_at": expires_at,
                 })
 
         # live/risk_blacklist.csv 已由 apply() 自动追加，这里不重复写入
 
-        # ── event_log.csv（追加，全历史） ────────────────────────────
+        # ── event_log.csv（追加，全历史，只记非正常标的） ────────────
         log_path = run_dir.parent / "event_log.csv"
         file_exists = log_path.exists()
         with open(log_path, "a", encoding="utf-8-sig", newline="") as f:
@@ -520,12 +518,9 @@ class EventRiskFilter:
                     writer.writerow({
                         "trade_date": trade_date,
                         "code": row.get("code", ""),
-                        "name": row.get("name", ""),
-                        "risk": row.get("risk", NORMAL),
-                        "risk_reason": row.get("risk_reason", ""),
-                        "source": "event_risk_filter_v1",
-                        "position_raw": row.get("position_raw", row.get("position", "")),
-                        "position_filtered": row.get("filtered_position", ""),
+                        "risk_level": row.get("risk", NORMAL),
+                        "reason": row.get("risk_reason", ""),
+                        "expires_at": expires_at,
                     })
 
         logger.info("[EventRiskFilter] 输出：%s（%d 行）, %s（追加模式）",
